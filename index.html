@@ -19,19 +19,21 @@
   .bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#238636,#2ea043);transition:width .4s ease;}
   .global-stats{display:flex;justify-content:space-between;font-size:11px;color:#8b949e;}
 
-  .tower-card{background:#161b22;border:1px solid #21262d;border-radius:10px;margin:10px 14px;overflow:hidden;transition:border-color .2s;}
-  .tower-card.complete{border-color:#238636;}
-  .tower-card.in-progress{border-color:#d29922;}
+  .loadout-header{padding:10px 14px 4px;font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+  .loadout-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+
+  .tower-card{border:2px solid transparent;border-radius:10px;margin:5px 14px;overflow:hidden;transition:border-color .2s;}
+  .tower-card.complete{filter:brightness(1.1);}
   .tower-header{display:flex;align-items:center;padding:14px 16px;cursor:pointer;gap:10px;user-select:none;}
-  .tower-header:active{background:#1c2128;}
+  .tower-header:active{opacity:.8;}
   .tower-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;flex:1;}
-  .t-bar-wrap{flex:1;max-width:80px;background:#21262d;border-radius:4px;height:6px;overflow:hidden;}
+  .t-bar-wrap{flex:1;max-width:80px;background:rgba(0,0,0,.3);border-radius:4px;height:6px;overflow:hidden;}
   .t-bar-fill{height:100%;border-radius:4px;transition:width .3s ease;}
   .t-pct{font-size:11px;min-width:36px;text-align:right;}
-  .chevron{color:#8b949e;font-size:14px;transition:transform .2s;}
+  .chevron{color:rgba(255,255,255,.5);font-size:14px;transition:transform .2s;}
   .chevron.open{transform:rotate(90deg);}
 
-  .flange-section{border-top:1px solid #21262d;padding:0 12px 12px;}
+  .flange-section{border-top:1px solid rgba(255,255,255,.08);padding:0 12px 12px;}
   .flange-label{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8b949e;padding:10px 4px 6px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
   .fcaret{font-size:10px;transition:transform .2s;}
   .fcaret.open{transform:rotate(90deg);}
@@ -54,10 +56,7 @@
   .worker-input::placeholder{color:#484f58;}
   .timestamp{font-size:10px;color:#58a6ff;}
   .locked-msg{font-size:11px;color:#484f58;}
-
   #loading{text-align:center;padding:40px;color:#8b949e;font-size:13px;}
-  .saving-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#58a6ff;margin-left:6px;animation:pulse 1s infinite;}
-  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 </style>
 </head>
 <body>
@@ -76,31 +75,35 @@
 const SUPABASE_URL = "https://tcuvakskniuaolntjoyi.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Jpb-hCViQ6lSwlNUx0PW8g_EHI3rDSf";
 
-const TOWERS = Array.from({length:21},(_,i)=>`WA${i+1}`);
+const LOADOUTS = [
+  { name:"Loadout 1", color:"#c0392b", bg:"#2a1a1a", towers:["WA10","WA17","WA16"] },
+  { name:"Loadout 2", color:"#d4ac0d", bg:"#2a2710", towers:["WA03","WA02","WA01"] },
+  { name:"Loadout 3", color:"#27ae60", bg:"#0f2a1a", towers:["WA09","WA11","WA18"] },
+  { name:"Loadout 4", color:"#2980b9", bg:"#0f1e2a", towers:["WA19","WA20","WA12"] },
+  { name:"Loadout 5", color:"#888ea0", bg:"#1a1c22", towers:["WA14","WA13","WA15"] },
+  { name:"Loadout 6", color:"#8e44ad", bg:"#1e1228", towers:["WA04","WA05","WA21"] },
+  { name:"Loadout 7", color:"#aaaaaa", bg:"#111111", towers:["WA06","WA07","WA08"] },
+];
+
+// Build flat ordered tower list with loadout info
+const TOWER_ORDER = [];
+LOADOUTS.forEach(l => l.towers.forEach(t => TOWER_ORDER.push({tower:t, loadout:l})));
+
 const FLANGES = ["1st – Base/Mid2","2nd – Mid2/Mid1","3rd – Mid1/Top"];
 const STEPS   = ["Step 1 – First Pass (50%)","Step 2 – Final Pass (100%)","Step 3 – Cleaning"];
 
-// state[tower][flange][step] = {pct, worker, updated_at}
 let state = {};
 let openTower = null;
-let openFlange = null; // "tower|flange"
+let openFlange = null;
 
 function initState(){
-  TOWERS.forEach(t=>{
-    state[t]={};
+  TOWER_ORDER.forEach(({tower})=>{
+    state[tower]={};
     FLANGES.forEach(f=>{
-      state[t][f]={};
-      STEPS.forEach(s=>{ state[t][f][s]={pct:0,worker:"",updated_at:""}; });
+      state[tower][f]={};
+      STEPS.forEach(s=>{ state[tower][f][s]={pct:0,worker:"",updated_at:""}; });
     });
   });
-}
-
-async function api(method,body=null){
-  const opts={method,headers:{"Content-Type":"application/json","apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY}};
-  if(body) opts.body=JSON.stringify(body);
-  const r=await fetch(SUPABASE_URL+"/rest/v1/checklist",opts);
-  if(method==="GET"||method==="SELECT") return r.json();
-  return r;
 }
 
 async function loadData(){
@@ -117,12 +120,10 @@ async function loadData(){
 }
 
 async function upsertRow(tower,flange,step,pct,worker){
-  // check if exists
   const existing = await fetch(
     `${SUPABASE_URL}/rest/v1/checklist?tower=eq.${encodeURIComponent(tower)}&flange=eq.${encodeURIComponent(flange)}&step=eq.${encodeURIComponent(step)}&select=id`,
     {headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY}}
   ).then(r=>r.json());
-
   const now = new Date().toISOString();
   if(existing && existing.length>0){
     await fetch(`${SUPABASE_URL}/rest/v1/checklist?id=eq.${existing[0].id}`,{
@@ -140,16 +141,8 @@ async function upsertRow(tower,flange,step,pct,worker){
   state[tower][flange][step]={pct,worker,updated_at:now};
 }
 
-function pctColor(p){
-  if(p===100)return"#3fb950";
-  if(p>0)return"#d29922";
-  return"#8b949e";
-}
-function barColor(p){
-  if(p===100)return"#238636";
-  if(p>0)return"#d29922";
-  return"#30363d";
-}
+function pctColor(p){ return p===100?"#3fb950":p>0?"#d29922":"#8b949e"; }
+function barColor(p){ return p===100?"#238636":p>0?"#d29922":"#30363d"; }
 
 function towerAvg(t){
   let sum=0,count=0;
@@ -163,10 +156,9 @@ function flangeAvg(t,f){
 }
 function globalAvg(){
   let sum=0,count=0;
-  TOWERS.forEach(t=>FLANGES.forEach(f=>STEPS.forEach(s=>{sum+=state[t][f][s].pct;count++;})));
+  TOWER_ORDER.forEach(({tower})=>FLANGES.forEach(f=>STEPS.forEach(s=>{sum+=state[tower][f][s].pct;count++;})));
   return Math.round(sum/count);
 }
-
 function updateGlobalBar(){
   const p=globalAvg();
   document.getElementById("global-bar").style.width=p+"%";
@@ -188,112 +180,100 @@ function render(){
   app.innerHTML="";
   updateGlobalBar();
 
-  TOWERS.forEach(tower=>{
-    const avg=towerAvg(tower);
-    const card=document.createElement("div");
-    card.className="tower-card"+(avg===100?" complete":avg>0?" in-progress":"");
+  LOADOUTS.forEach(loadout=>{
+    // Loadout label
+    const lhdr=document.createElement("div");
+    lhdr.className="loadout-header";
+    lhdr.style.color=loadout.color;
+    lhdr.innerHTML=`<div class="loadout-dot" style="background:${loadout.color}"></div>${loadout.name}`;
+    app.appendChild(lhdr);
 
-    // header
-    const hdr=document.createElement("div");
-    hdr.className="tower-header";
-    hdr.innerHTML=`
-      <div class="tower-title">${tower}</div>
-      <div class="t-bar-wrap"><div class="t-bar-fill" style="width:${avg}%;background:${barColor(avg)}"></div></div>
-      <div class="t-pct" style="color:${pctColor(avg)}">${avg}%</div>
-      <div class="chevron${openTower===tower?" open":""}">▶</div>
-    `;
-    hdr.onclick=()=>{ openTower=openTower===tower?null:tower; render(); };
-    card.appendChild(hdr);
+    loadout.towers.forEach(tower=>{
+      const avg=towerAvg(tower);
+      const card=document.createElement("div");
+      card.className="tower-card"+(avg===100?" complete":"");
+      card.style.background=loadout.bg;
+      card.style.borderColor=avg>0?loadout.color:"rgba(255,255,255,.08)";
 
-    if(openTower===tower){
-      FLANGES.forEach(flange=>{
-        const fKey=tower+"|"+flange;
-        const fAvg=flangeAvg(tower,flange);
-        const fsec=document.createElement("div");
-        fsec.className="flange-section";
+      const hdr=document.createElement("div");
+      hdr.className="tower-header";
+      hdr.innerHTML=`
+        <div class="tower-title" style="color:${loadout.color}">${tower}</div>
+        <div class="t-bar-wrap"><div class="t-bar-fill" style="width:${avg}%;background:${loadout.color}"></div></div>
+        <div class="t-pct" style="color:${loadout.color}">${avg}%</div>
+        <div class="chevron${openTower===tower?" open":""}">▶</div>
+      `;
+      hdr.onclick=()=>{ openTower=openTower===tower?null:tower; render(); };
+      card.appendChild(hdr);
 
-        const flbl=document.createElement("div");
-        flbl.className="flange-label";
-        flbl.innerHTML=`<span class="fcaret${openFlange===fKey?" open":""}">▶</span>${flange}<span style="color:${pctColor(fAvg)};margin-left:auto">${fAvg}%</span>`;
-        flbl.onclick=()=>{ openFlange=openFlange===fKey?null:fKey; render(); };
-        fsec.appendChild(flbl);
+      if(openTower===tower){
+        FLANGES.forEach(flange=>{
+          const fKey=tower+"|"+flange;
+          const fAvg=flangeAvg(tower,flange);
+          const fsec=document.createElement("div");
+          fsec.className="flange-section";
 
-        if(openFlange===fKey){
-          STEPS.forEach((step,si)=>{
-            const {pct,worker,updated_at}=state[tower][flange][step];
-            const prevDone = si===0 || state[tower][flange][STEPS[si-1]].pct===100;
-            const locked = !prevDone;
+          const flbl=document.createElement("div");
+          flbl.className="flange-label";
+          flbl.innerHTML=`<span class="fcaret${openFlange===fKey?" open":""}">▶</span>${flange}<span style="color:${pctColor(fAvg)};margin-left:auto">${fAvg}%</span>`;
+          flbl.onclick=()=>{ openFlange=openFlange===fKey?null:fKey; render(); };
+          fsec.appendChild(flbl);
 
-            const srow=document.createElement("div");
-            srow.className="step-row"+(pct===100?" done":pct>0?" partial":"");
-
-            const ts = updated_at ? new Date(updated_at).toLocaleString("en-GB",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
-
-            srow.innerHTML=`
-              <div class="step-top">
-                <div class="step-name" style="color:${pctColor(pct)}">${step}</div>
-                <div class="pct-display" style="color:${pctColor(pct)}">${pct}%</div>
-              </div>
-              <div class="s-bar-wrap"><div class="s-bar-fill" style="width:${pct}%;background:${barColor(pct)}"></div></div>
-              <div class="step-controls">
-                ${locked
-                  ? `<span class="locked-msg">🔒 Complete previous step (100%) first</span>`
-                  : `
-                    <button class="pct-btn" data-v="25">25%</button>
-                    <button class="pct-btn" data-v="50">50%</button>
-                    <button class="pct-btn" data-v="75">75%</button>
-                    <button class="pct-btn" data-v="100">100%</button>
-                    <input class="pct-input" type="number" min="0" max="100" value="${pct}" placeholder="%"/>
-                    <input class="worker-input" placeholder="Worker name" value="${worker}"/>
-                    ${ts?`<span class="timestamp">✓ ${ts}</span>`:""}
-                  `
-                }
-              </div>
-            `;
-
-            if(!locked){
-              srow.querySelectorAll(".pct-btn").forEach(btn=>{
-                btn.onclick=()=>{
-                  const v=parseInt(btn.dataset.v);
+          if(openFlange===fKey){
+            STEPS.forEach((step,si)=>{
+              const {pct,worker,updated_at}=state[tower][flange][step];
+              const locked = si>0 && state[tower][flange][STEPS[si-1]].pct!==100;
+              const srow=document.createElement("div");
+              srow.className="step-row"+(pct===100?" done":pct>0?" partial":"");
+              const ts=updated_at?new Date(updated_at).toLocaleString("en-GB",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+              srow.innerHTML=`
+                <div class="step-top">
+                  <div class="step-name" style="color:${pctColor(pct)}">${step}</div>
+                  <div class="pct-display" style="color:${pctColor(pct)}">${pct}%</div>
+                </div>
+                <div class="s-bar-wrap"><div class="s-bar-fill" style="width:${pct}%;background:${barColor(pct)}"></div></div>
+                <div class="step-controls">
+                  ${locked
+                    ?`<span class="locked-msg">🔒 Complete previous step (100%) first</span>`
+                    :`<button class="pct-btn" data-v="25">25%</button>
+                      <button class="pct-btn" data-v="50">50%</button>
+                      <button class="pct-btn" data-v="75">75%</button>
+                      <button class="pct-btn" data-v="100">100%</button>
+                      <input class="pct-input" type="number" min="0" max="100" value="${pct}" placeholder="%"/>
+                      <input class="worker-input" placeholder="Worker name" value="${worker}"/>
+                      ${ts?`<span class="timestamp">✓ ${ts}</span>`:""}`
+                  }
+                </div>
+              `;
+              if(!locked){
+                srow.querySelectorAll(".pct-btn").forEach(btn=>{
+                  btn.onclick=()=>{ state[tower][flange][step].pct=parseInt(btn.dataset.v); scheduleSave(tower,flange,step); render(); };
+                });
+                const pi=srow.querySelector(".pct-input");
+                pi.oninput=()=>{
+                  const v=Math.min(100,Math.max(0,parseInt(pi.value)||0));
                   state[tower][flange][step].pct=v;
                   scheduleSave(tower,flange,step);
-                  render();
+                  updateGlobalBar();
+                  srow.querySelector(".pct-display").textContent=v+"%";
+                  srow.querySelector(".s-bar-fill").style.width=v+"%";
                 };
-              });
-              const pi=srow.querySelector(".pct-input");
-              pi.oninput=()=>{
-                const v=Math.min(100,Math.max(0,parseInt(pi.value)||0));
-                state[tower][flange][step].pct=v;
-                scheduleSave(tower,flange,step);
-                updateGlobalBar();
-                // update displays without full re-render
-                srow.querySelector(".pct-display").textContent=v+"%";
-                srow.querySelector(".s-bar-fill").style.width=v+"%";
-              };
-              const wi=srow.querySelector(".worker-input");
-              wi.oninput=()=>{
-                state[tower][flange][step].worker=wi.value;
-                scheduleSave(tower,flange,step);
-              };
-            }
-
-            fsec.appendChild(srow);
-          });
-        }
-        card.appendChild(fsec);
-      });
-    }
-    app.appendChild(card);
+                const wi=srow.querySelector(".worker-input");
+                wi.oninput=()=>{ state[tower][flange][step].worker=wi.value; scheduleSave(tower,flange,step); };
+              }
+              fsec.appendChild(srow);
+            });
+          }
+          card.appendChild(fsec);
+        });
+      }
+      app.appendChild(card);
+    });
   });
 }
 
-// Poll for updates every 30 seconds
-setInterval(async()=>{
-  await loadData();
-  render();
-},30000);
+setInterval(async()=>{ await loadData(); render(); },30000);
 
-// Init
 initState();
 loadData().then(()=>{
   document.getElementById("loading").style.display="none";
