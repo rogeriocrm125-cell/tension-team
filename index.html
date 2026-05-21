@@ -225,7 +225,7 @@ function render(){
               const locked = si>0 && state[tower][flange][STEPS[si-1]].pct!==100;
               const srow=document.createElement("div");
               srow.className="step-row"+(pct===100?" done":pct>0?" partial":"");
-              const ts=updated_at?new Date(updated_at).toLocaleString("en-GB",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+              const ts=updated_at&&pct===100?new Date(updated_at).toLocaleString("en-GB",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
               srow.innerHTML=`
                 <div class="step-top">
                   <div class="step-name" style="color:${pctColor(pct)}">${step}</div>
@@ -241,7 +241,7 @@ function render(){
                       <button class="pct-btn" data-v="100">100%</button>
                       <input class="pct-input" type="number" min="0" max="100" value="${pct}" placeholder="%"/>
                       <input class="worker-input" placeholder="Worker name" value="${worker}"/>
-                      ${ts?`<span class="timestamp">✓ ${ts}</span>`:""}`
+                      ${ts?`<span class="timestamp">✅ Completed on: ${ts}</span>`:""}`
                   }
                 </div>
               `;
